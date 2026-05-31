@@ -3,6 +3,11 @@ dist/
 artifacts/
 .env
 .env.local
+backend/.env
+backend/vendor/
+backend/storage/*.key
+backend/storage/logs/*.log
+backend/bootstrap/cache/*.php
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

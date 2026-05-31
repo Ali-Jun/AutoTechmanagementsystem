@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "api:install": "cd backend && composer install",
+    "api:migrate": "cd backend && php artisan migrate --seed",
+    "api:serve": "cd backend && php artisan serve --host=127.0.0.1 --port=8000"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.4",

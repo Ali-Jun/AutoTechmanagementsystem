@@ -1,14 +1,17 @@
 # Auto Tech Management System
 
-React MVP for the vehicle service and repair management portal described in `Auto_Tech_Management_System_Documentation.docx`.
+Full-stack vehicle service and repair management portal described in `Auto_Tech_Management_System_Documentation.docx`.
 
 ## Current Build
 
 - React + React Router dashboard
+- Laravel REST API source in `backend`
+- Laravel Sanctum token authentication
+- MySQL migrations and seed data
 - Role-aware flows for admin, customer, and mechanic
 - Local seeded data for users, vehicles, services, bookings, invoices, payments, and feedback
 - PKR-based service pricing, invoices, and payment recording
-- Mock API-style actions that can later be replaced by Laravel REST endpoints
+- Axios API client configured for Laravel endpoints
 
 ## Run
 
@@ -16,6 +19,28 @@ React MVP for the vehicle service and repair management portal described in `Aut
 npm.cmd install
 npm.cmd run dev
 ```
+
+## Laravel API
+
+PHP, Composer, and MySQL are required for the backend.
+
+```bash
+cd backend
+composer install
+copy .env.example .env
+php artisan key:generate
+php artisan migrate --seed
+php artisan serve --host=127.0.0.1 --port=8000
+```
+
+Point the frontend at the API:
+
+```bash
+copy .env.example .env
+npm.cmd run dev
+```
+
+`VITE_API_URL` defaults to `http://127.0.0.1:8000/api`.
 
 ## Deploy
 
@@ -39,8 +64,6 @@ Demo accounts all use the password `password`:
 
 ## Laravel API Contract
 
-The frontend is organized around the documented endpoints:
-
 - `POST /login`
 - `POST /register`
 - `GET /services`
@@ -48,5 +71,8 @@ The frontend is organized around the documented endpoints:
 - `GET /bookings`
 - `PUT /bookings/{id}`
 - `GET /invoices`
-
-Once PHP, Composer, Laravel, and MySQL are installed, replace the local action layer in `src/App.jsx` with Axios calls to the Laravel API.
+- `GET /payments`
+- `POST /payments`
+- `GET /feedback`
+- `POST /feedback`
+- `GET /reports`
