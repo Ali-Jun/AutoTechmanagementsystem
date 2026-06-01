@@ -1,0 +1,6 @@
+artifacts/
+backend/
+dist/
+node_modules/
+tools/
+*.log
