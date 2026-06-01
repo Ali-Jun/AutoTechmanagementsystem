@@ -1,10 +1,12 @@
 node_modules/
 dist/
 artifacts/
+tools/
 .env
 .env.local
 backend/.env
 backend/vendor/
+backend/database/*.sqlite
 backend/storage/*.key
 backend/storage/logs/*.log
 backend/bootstrap/cache/*.php

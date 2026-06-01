@@ -6,7 +6,7 @@ Laravel REST API for the Auto Tech Management System.
 
 - PHP 8.2+
 - Composer
-- MySQL
+- SQLite for local development or MySQL for production
 
 ## Setup
 
@@ -14,6 +14,7 @@ Laravel REST API for the Auto Tech Management System.
 composer install
 copy .env.example .env
 php artisan key:generate
+type nul > database\database.sqlite
 php artisan migrate --seed
 php artisan serve --host=127.0.0.1 --port=8000
 ```
@@ -28,6 +29,7 @@ Demo accounts use password `password`:
 
 - `POST /api/login`
 - `POST /api/register`
+- `GET /api/bootstrap`
 - `GET /api/services`
 - `GET /api/bookings`
 - `POST /api/bookings`

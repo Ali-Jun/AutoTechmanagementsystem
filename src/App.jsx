@@ -27,9 +27,11 @@ import {
   X,
 } from "lucide-react";
 import { bookingStatuses, initialStore, priorities } from "./data/seedData.js";
+import { apiClient, apiEnabled, setApiToken as setApiAuthToken } from "./lib/apiClient.js";
 
 const storageKey = "autoTech.store.v1";
 const currentUserKey = "autoTech.currentUser.v1";
+const apiTokenKey = "autoTech.apiToken.v1";
 
 const roleMeta = {
   admin: { label: "Admin", icon: ShieldCheck },
@@ -51,6 +53,217 @@ const navItems = [
 ];
 
 const paymentMethods = ["Cash", "Easypaisa", "JazzCash", "Bank transfer", "Card"];
+
+function asId(value) {
+  return value === null || value === undefined ? "" : String(value);
+}
+
+function uniqueById(items) {
+  const records = new Map();
+
+  items.filter((item) => item?.id).forEach((item) => {
+    records.set(item.id, { ...records.get(item.id), ...item });
+  });
+
+  return Array.from(records.values());
+}
+
+function mapApiUser(user) {
+  if (!user) return null;
+
+  return {
+    id: asId(user.id),
+    name: user.name || "Unknown user",
+    email: user.email || "",
+    password: "",
+    role: user.role || "customer",
+    phone: user.phone || "",
+  };
+}
+
+function mapApiVehicle(vehicle) {
+  if (!vehicle) return null;
+
+  return {
+    id: asId(vehicle.id),
+    customerId: asId(vehicle.customer_id ?? vehicle.customer?.id),
+    make: vehicle.make || "",
+    model: vehicle.model || "",
+    year: vehicle.year || "",
+    plate: vehicle.plate || "",
+    mileage: Number(vehicle.mileage || 0),
+  };
+}
+
+function mapApiService(service) {
+  if (!service) return null;
+
+  return {
+    id: asId(service.id),
+    name: service.name || "",
+    category: service.category || "",
+    duration: service.duration || "",
+    price: Number(service.price || 0),
+    active: Boolean(service.active),
+    description: service.description || "",
+  };
+}
+
+function mapApiMechanic(mechanic) {
+  if (!mechanic) return null;
+
+  return {
+    id: asId(mechanic.id),
+    userId: asId(mechanic.user_id ?? mechanic.user?.id),
+    specialty: mechanic.specialty || "",
+    bay: mechanic.bay || "",
+    status: mechanic.status || "Available",
+    rating: Number(mechanic.rating || 0),
+  };
+}
+
+function mapApiBooking(booking) {
+  if (!booking) return null;
+
+  return {
+    id: asId(booking.id),
+    customerId: asId(booking.customer_id ?? booking.customer?.id),
+    vehicleId: asId(booking.vehicle_id ?? booking.vehicle?.id),
+    serviceId: asId(booking.service_id ?? booking.service?.id),
+    mechanicId: asId(booking.mechanic_id ?? booking.mechanic?.id),
+    appointmentDate: booking.appointment_date || "",
+    priority: booking.priority || "Normal",
+    status: booking.status || "Pending",
+    notes: booking.notes || "",
+    mileage: Number(booking.mileage || 0),
+    createdAt: (booking.created_at || todayISO()).slice(0, 10),
+  };
+}
+
+function mapApiInvoice(invoice) {
+  if (!invoice) return null;
+
+  return {
+    id: asId(invoice.id),
+    bookingId: asId(invoice.booking_id ?? invoice.booking?.id),
+    amount: Number(invoice.amount || 0),
+    status: invoice.status || "Unpaid",
+    issuedOn: invoice.issued_on || "",
+    dueDate: invoice.due_date || "",
+  };
+}
+
+function mapApiPayment(payment) {
+  if (!payment) return null;
+
+  return {
+    id: asId(payment.id),
+    invoiceId: asId(payment.invoice_id ?? payment.invoice?.id),
+    amount: Number(payment.amount || 0),
+    currency: payment.currency || "PKR",
+    method: payment.method || "Cash",
+    reference: payment.reference || "",
+    paidOn: payment.paid_on || "",
+  };
+}
+
+function mapApiFeedback(feedback) {
+  if (!feedback) return null;
+
+  return {
+    id: asId(feedback.id),
+    bookingId: asId(feedback.booking_id ?? feedback.booking?.id),
+    customerId: asId(feedback.customer_id ?? feedback.customer?.id),
+    rating: Number(feedback.rating || 0),
+    comment: feedback.comment || "",
+    createdAt: (feedback.created_at || todayISO()).slice(0, 10),
+  };
+}
+
+function buildStoreFromApi({ user, services = [], bookings = [], mechanics = [], invoices = [], payments = [], feedback = [] }) {
+  const bookingInvoices = bookings.map((booking) => booking.invoice);
+  const bookingFeedback = bookings.map((booking) => booking.feedback);
+  const invoiceBookings = invoices.map((invoice) => invoice.booking);
+  const paymentInvoices = payments.map((payment) => payment.invoice);
+  const paymentBookings = paymentInvoices.map((invoice) => invoice?.booking);
+  const feedbackBookings = feedback.map((item) => item.booking);
+
+  return normalizeStore({
+    users: uniqueById([
+      mapApiUser(user),
+      ...mechanics.map((mechanic) => mapApiUser(mechanic.user)),
+      ...bookings.map((booking) => mapApiUser(booking.customer)),
+      ...invoiceBookings.map((booking) => mapApiUser(booking?.customer)),
+      ...paymentBookings.map((booking) => mapApiUser(booking?.customer)),
+      ...feedback.map((item) => mapApiUser(item.customer)),
+    ]),
+    vehicles: uniqueById([
+      ...bookings.map((booking) => mapApiVehicle(booking.vehicle)),
+      ...invoiceBookings.map((booking) => mapApiVehicle(booking?.vehicle)),
+      ...paymentBookings.map((booking) => mapApiVehicle(booking?.vehicle)),
+      ...feedbackBookings.map((booking) => mapApiVehicle(booking?.vehicle)),
+    ]),
+    services: uniqueById([
+      ...services.map(mapApiService),
+      ...bookings.map((booking) => mapApiService(booking.service)),
+      ...invoiceBookings.map((booking) => mapApiService(booking?.service)),
+      ...paymentBookings.map((booking) => mapApiService(booking?.service)),
+      ...feedbackBookings.map((booking) => mapApiService(booking?.service)),
+    ]),
+    mechanics: uniqueById([...mechanics.map(mapApiMechanic), ...bookings.map((booking) => mapApiMechanic(booking.mechanic))]),
+    bookings: uniqueById([
+      ...bookings.map(mapApiBooking),
+      ...invoiceBookings.map(mapApiBooking),
+      ...paymentBookings.map(mapApiBooking),
+      ...feedbackBookings.map(mapApiBooking),
+    ]),
+    invoices: uniqueById([...invoices.map(mapApiInvoice), ...bookingInvoices.map(mapApiInvoice), ...paymentInvoices.map(mapApiInvoice)]),
+    payments: uniqueById(payments.map(mapApiPayment)),
+    feedback: uniqueById([...feedback.map(mapApiFeedback), ...bookingFeedback.map(mapApiFeedback)]),
+  });
+}
+
+function getApiError(error, fallback) {
+  const errors = error?.response?.data?.errors;
+  const firstValidationError = errors ? Object.values(errors).flat()[0] : "";
+  return firstValidationError || error?.response?.data?.message || fallback;
+}
+
+function toApiBookingPayload(customerId, payload) {
+  const useExistingVehicle = payload.vehicleId && payload.vehicleId !== "new";
+
+  return {
+    customer_id: Number(customerId),
+    service_id: Number(payload.serviceId),
+    vehicle_id: useExistingVehicle ? Number(payload.vehicleId) : undefined,
+    vehicle: useExistingVehicle
+      ? undefined
+      : {
+          make: payload.vehicle.make,
+          model: payload.vehicle.model,
+          year: payload.vehicle.year,
+          plate: payload.vehicle.plate,
+          mileage: Number(payload.vehicle.mileage || 0),
+        },
+    appointment_date: payload.appointmentDate,
+    priority: payload.priority,
+    notes: payload.notes,
+    mileage: Number(payload.vehicle.mileage || 0),
+  };
+}
+
+function toApiBookingPatch(patch) {
+  const payload = {};
+
+  if ("mechanicId" in patch) payload.mechanic_id = patch.mechanicId ? Number(patch.mechanicId) : null;
+  if ("appointmentDate" in patch) payload.appointment_date = patch.appointmentDate;
+  if ("priority" in patch) payload.priority = patch.priority;
+  if ("status" in patch) payload.status = patch.status;
+  if ("notes" in patch) payload.notes = patch.notes;
+  if ("mileage" in patch) payload.mileage = Number(patch.mileage || 0);
+
+  return payload;
+}
 
 function normalizeStore(store) {
   return {
@@ -111,9 +324,10 @@ function money(amount) {
 
 function formatDate(date) {
   if (!date) return "Not set";
-  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(
-    new Date(`${date}T00:00:00`),
-  );
+  const parsed = new Date(String(date).includes("T") ? date : `${date}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "Not set";
+
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(parsed);
 }
 
 function average(values) {
@@ -144,14 +358,74 @@ function getVisibleInvoices(store, currentUser) {
 function App() {
   const [store, setStore] = usePersistentState(storageKey, initialStore, normalizeStore);
   const [currentUserId, setCurrentUserId] = usePersistentState(currentUserKey, null);
-  const currentUser = store.users.find((user) => user.id === currentUserId);
+  const [apiToken, setApiTokenState] = usePersistentState(apiTokenKey, null);
+  const [apiStatus, setApiStatus] = useState({ loading: apiEnabled && Boolean(apiToken), error: "" });
+  const currentUser = apiEnabled && !apiToken ? null : store.users.find((user) => user.id === currentUserId);
 
   useEffect(() => {
     setStore((previous) => normalizeStore(previous));
   }, []);
 
+  useEffect(() => {
+    setApiAuthToken(apiToken);
+  }, [apiToken]);
+
+  async function hydrateApiStore(authUser = null) {
+    if (!apiEnabled || (!apiToken && !authUser)) return store;
+
+    setApiStatus({ loading: true, error: "" });
+
+    try {
+      const response = await apiClient.bootstrap();
+      const data = response.data;
+      const user = authUser || data.user;
+
+      const nextStore = buildStoreFromApi({
+        user,
+        services: data.services,
+        bookings: data.bookings,
+        mechanics: data.mechanics,
+        invoices: data.invoices,
+        payments: data.payments,
+        feedback: data.feedback,
+      });
+
+      setStore(nextStore);
+      setCurrentUserId(asId(user.id));
+      setApiStatus({ loading: false, error: "" });
+      return nextStore;
+    } catch (error) {
+      const message = getApiError(error, "Could not reach the Laravel API.");
+      setApiStatus({ loading: false, error: message });
+      throw error;
+    }
+  }
+
+  useEffect(() => {
+    if (!apiEnabled || !apiToken) return;
+
+    hydrateApiStore().catch(() => {
+      setApiTokenState(null);
+      setApiAuthToken(null);
+      setCurrentUserId(null);
+    });
+  }, [apiToken]);
+
   const actions = {
-    login(email, password) {
+    async login(email, password) {
+      if (apiEnabled) {
+        try {
+          const response = await apiClient.login({ email, password });
+          setApiAuthToken(response.data.token);
+          setApiTokenState(response.data.token);
+          setCurrentUserId(asId(response.data.user.id));
+          await hydrateApiStore(response.data.user);
+          return { ok: true };
+        } catch (error) {
+          return { ok: false, message: getApiError(error, "Email or password did not match.") };
+        }
+      }
+
       const user = store.users.find(
         (candidate) => candidate.email.toLowerCase() === email.trim().toLowerCase(),
       );
@@ -164,7 +438,26 @@ function App() {
       return { ok: true };
     },
 
-    register(payload) {
+    async register(payload) {
+      if (apiEnabled) {
+        try {
+          const response = await apiClient.register({
+            name: payload.name.trim(),
+            email: payload.email.trim().toLowerCase(),
+            phone: payload.phone.trim(),
+            password: payload.password,
+            role: payload.role,
+          });
+          setApiAuthToken(response.data.token);
+          setApiTokenState(response.data.token);
+          setCurrentUserId(asId(response.data.user.id));
+          await hydrateApiStore(response.data.user);
+          return { ok: true };
+        } catch (error) {
+          return { ok: false, message: getApiError(error, "Could not create the account.") };
+        }
+      }
+
       const email = payload.email.trim().toLowerCase();
       const exists = store.users.some((user) => user.email.toLowerCase() === email);
 
@@ -204,15 +497,29 @@ function App() {
       return { ok: true };
     },
 
-    logout() {
+    async logout() {
+      if (apiEnabled && apiToken) {
+        await apiClient.logout().catch(() => {});
+        setApiTokenState(null);
+        setApiAuthToken(null);
+        localStorage.removeItem(apiTokenKey);
+      }
+
       setCurrentUserId(null);
     },
 
     switchUser(userId) {
+      if (apiEnabled) return;
       setCurrentUserId(userId);
     },
 
-    createBooking(customerId, payload) {
+    async createBooking(customerId, payload) {
+      if (apiEnabled) {
+        const response = await apiClient.createBooking(toApiBookingPayload(customerId, payload));
+        await hydrateApiStore();
+        return asId(response.data.booking.id);
+      }
+
       const vehicleId = payload.vehicleId && payload.vehicleId !== "new" ? payload.vehicleId : createId("v");
       const bookingId = createId("b");
 
@@ -258,7 +565,13 @@ function App() {
       return bookingId;
     },
 
-    updateBooking(bookingId, patch) {
+    async updateBooking(bookingId, patch) {
+      if (apiEnabled) {
+        await apiClient.updateBooking(bookingId, toApiBookingPatch(patch));
+        await hydrateApiStore();
+        return;
+      }
+
       setStore((previous) => {
         const booking = previous.bookings.find((item) => item.id === bookingId);
         const shouldInvoice = patch.status === "Completed" && !previous.invoices.some((item) => item.bookingId === bookingId);
@@ -294,7 +607,19 @@ function App() {
       });
     },
 
-    addService(payload) {
+    async addService(payload) {
+      if (apiEnabled) {
+        await apiClient.createService({
+          name: payload.name,
+          category: payload.category,
+          duration: payload.duration,
+          price: Number(payload.price || 0),
+          description: payload.description,
+        });
+        await hydrateApiStore();
+        return;
+      }
+
       setStore((previous) => ({
         ...previous,
         services: [
@@ -312,7 +637,15 @@ function App() {
       }));
     },
 
-    toggleService(serviceId) {
+    async toggleService(serviceId) {
+      if (apiEnabled) {
+        const service = store.services.find((item) => item.id === serviceId);
+        if (!service) return;
+        await apiClient.updateService(serviceId, { active: !service.active });
+        await hydrateApiStore();
+        return;
+      }
+
       setStore((previous) => ({
         ...previous,
         services: previous.services.map((service) =>
@@ -321,7 +654,20 @@ function App() {
       }));
     },
 
-    addMechanic(payload) {
+    async addMechanic(payload) {
+      if (apiEnabled) {
+        await apiClient.createMechanic({
+          name: payload.name,
+          email: payload.email.trim().toLowerCase(),
+          phone: payload.phone,
+          specialty: payload.specialty,
+          bay: payload.bay,
+          rating: Number(payload.rating || 4.5),
+        });
+        await hydrateApiStore();
+        return;
+      }
+
       const userId = createId("u");
       setStore((previous) => ({
         ...previous,
@@ -350,7 +696,13 @@ function App() {
       }));
     },
 
-    generateInvoice(bookingId) {
+    async generateInvoice(bookingId) {
+      if (apiEnabled) {
+        await apiClient.createInvoice({ booking_id: Number(bookingId) });
+        await hydrateApiStore();
+        return;
+      }
+
       setStore((previous) => {
         if (previous.invoices.some((invoice) => invoice.bookingId === bookingId)) return previous;
         const booking = previous.bookings.find((item) => item.id === bookingId);
@@ -374,7 +726,17 @@ function App() {
       });
     },
 
-    markInvoicePaid(invoiceId, method = "Portal", reference = "") {
+    async markInvoicePaid(invoiceId, method = "Portal", reference = "") {
+      if (apiEnabled) {
+        await apiClient.createPayment({
+          invoice_id: Number(invoiceId),
+          method,
+          reference: reference.trim() || undefined,
+        });
+        await hydrateApiStore();
+        return;
+      }
+
       setStore((previous) => {
         const invoice = previous.invoices.find((item) => item.id === invoiceId);
         if (!invoice) return previous;
@@ -403,7 +765,17 @@ function App() {
       });
     },
 
-    submitFeedback(payload) {
+    async submitFeedback(payload) {
+      if (apiEnabled) {
+        await apiClient.createFeedback({
+          booking_id: Number(payload.bookingId),
+          rating: Number(payload.rating),
+          comment: payload.comment,
+        });
+        await hydrateApiStore();
+        return;
+      }
+
       setStore((previous) => ({
         ...previous,
         feedback: [
@@ -420,18 +792,24 @@ function App() {
       }));
     },
 
-    resetDemo() {
+    async resetDemo() {
+      if (apiEnabled && apiToken) {
+        await hydrateApiStore();
+        return;
+      }
+
       localStorage.removeItem(storageKey);
       setStore(initialStore);
     },
   };
 
   if (!currentUser) {
-    return <AuthScreen store={store} actions={actions} />;
+    return <AuthScreen store={store} actions={actions} apiStatus={apiStatus} />;
   }
 
   return (
     <Shell store={store} currentUser={currentUser} actions={actions}>
+      {apiStatus.error ? <div className="notice error">{apiStatus.error}</div> : null}
       <Routes>
         <Route path="/" element={<Dashboard store={store} currentUser={currentUser} actions={actions} />} />
         <Route
@@ -523,7 +901,7 @@ function RoleRoute({ currentUser, roles, children }) {
   return children;
 }
 
-function AuthScreen({ store, actions }) {
+function AuthScreen({ store, actions, apiStatus }) {
   const [mode, setMode] = useState("login");
   const [loginForm, setLoginForm] = useState({ email: "admin@autotech.test", password: "password" });
   const [registerForm, setRegisterForm] = useState({
@@ -534,26 +912,31 @@ function AuthScreen({ store, actions }) {
     role: "customer",
   });
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const demoUsers = ["admin", "customer", "mechanic"]
     .map((role) => store.users.find((user) => user.role === role))
     .filter(Boolean);
 
-  const submitLogin = (event) => {
+  const submitLogin = async (event) => {
     event.preventDefault();
     setError("");
-    const result = actions.login(loginForm.email, loginForm.password);
+    setSubmitting(true);
+    const result = await actions.login(loginForm.email, loginForm.password);
+    setSubmitting(false);
     if (!result.ok) setError(result.message);
   };
 
-  const submitRegister = (event) => {
+  const submitRegister = async (event) => {
     event.preventDefault();
     setError("");
     if (!registerForm.name || !registerForm.email || !registerForm.password) {
       setError("Name, email, and password are required.");
       return;
     }
-    const result = actions.register(registerForm);
+    setSubmitting(true);
+    const result = await actions.register(registerForm);
+    setSubmitting(false);
     if (!result.ok) setError(result.message);
   };
 
@@ -590,6 +973,7 @@ function AuthScreen({ store, actions }) {
             </button>
           </div>
 
+          {apiStatus?.error ? <div className="notice error">{apiStatus.error}</div> : null}
           {error ? <div className="notice error">{error}</div> : null}
 
           {mode === "login" ? (
@@ -612,9 +996,9 @@ function AuthScreen({ store, actions }) {
                   autoComplete="current-password"
                 />
               </label>
-              <button className="primary-button" type="submit">
+              <button className="primary-button" type="submit" disabled={submitting}>
                 <CheckCircle2 size={18} />
-                Sign in
+                {submitting ? "Signing in" : "Sign in"}
               </button>
             </form>
           ) : (
@@ -667,9 +1051,9 @@ function AuthScreen({ store, actions }) {
                   );
                 })}
               </div>
-              <button className="primary-button" type="submit">
+              <button className="primary-button" type="submit" disabled={submitting}>
                 <Plus size={18} />
-                Create account
+                {submitting ? "Creating" : "Create account"}
               </button>
             </form>
           )}
@@ -746,7 +1130,7 @@ function Shell({ store, currentUser, actions, children }) {
             </button>
             <label className="account-switcher">
               <RoleIcon size={17} />
-              <select value={currentUser.id} onChange={(event) => actions.switchUser(event.target.value)}>
+              <select value={currentUser.id} onChange={(event) => actions.switchUser(event.target.value)} disabled={apiEnabled}>
                 {store.users.map((user) => (
                   <option key={user.id} value={user.id}>
                     {user.name} - {roleMeta[user.role].label}
@@ -932,7 +1316,7 @@ function BookService({ store, currentUser, actions }) {
 
   const selectedVehicle = customerVehicles.find((vehicle) => vehicle.id === form.vehicleId);
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault();
     const vehicle = selectedVehicle || {
       make: form.make,
@@ -942,7 +1326,7 @@ function BookService({ store, currentUser, actions }) {
       mileage: form.mileage,
     };
 
-    const bookingId = actions.createBooking(currentUser.id, {
+    const bookingId = await actions.createBooking(currentUser.id, {
       serviceId: form.serviceId,
       vehicleId: selectedVehicle?.id || "new",
       appointmentDate: form.appointmentDate,
@@ -1163,9 +1547,9 @@ function ServicesPage({ store, actions }) {
     description: "",
   });
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault();
-    actions.addService(form);
+    await actions.addService(form);
     setForm({ name: "", category: "", duration: "1 hr", price: "", description: "" });
   };
 
@@ -1241,9 +1625,9 @@ function MechanicsPage({ store, actions }) {
     rating: "4.5",
   });
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault();
-    actions.addMechanic(form);
+    await actions.addMechanic(form);
     setForm({ name: "", email: "", phone: "", specialty: "", bay: "Bay 3", rating: "4.5" });
   };
 
@@ -1405,10 +1789,10 @@ function PaymentsPage({ store, currentUser, actions }) {
   const activeBooking = activeInvoice ? store.bookings.find((booking) => booking.id === activeInvoice.bookingId) : null;
   const activeDetails = activeBooking ? getDetails(store, activeBooking) : {};
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault();
     if (!activeInvoice) return;
-    actions.markInvoicePaid(activeInvoice.id, form.method, form.reference);
+    await actions.markInvoicePaid(activeInvoice.id, form.method, form.reference);
     const nextUnpaid = unpaidInvoices.find((invoice) => invoice.id !== activeInvoice.id);
     setForm({ invoiceId: nextUnpaid?.id || "", method: form.method, reference: "" });
   };
@@ -1591,9 +1975,9 @@ function CustomerFeedback({ store, currentUser, actions }) {
     comment: "",
   });
 
-  const submit = (event) => {
+  const submit = async (event) => {
     event.preventDefault();
-    actions.submitFeedback({ ...form, customerId: currentUser.id });
+    await actions.submitFeedback({ ...form, customerId: currentUser.id });
     setForm({ ...form, comment: "" });
   };
 

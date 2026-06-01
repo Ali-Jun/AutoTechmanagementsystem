@@ -7,7 +7,7 @@ Full-stack vehicle service and repair management portal described in `Auto_Tech_
 - React + React Router dashboard
 - Laravel REST API source in `backend`
 - Laravel Sanctum token authentication
-- MySQL migrations and seed data
+- SQLite/MySQL migrations and seed data
 - Role-aware flows for admin, customer, and mechanic
 - Local seeded data for users, vehicles, services, bookings, invoices, payments, and feedback
 - PKR-based service pricing, invoices, and payment recording
@@ -22,13 +22,14 @@ npm.cmd run dev
 
 ## Laravel API
 
-PHP, Composer, and MySQL are required for the backend.
+PHP and Composer are required for the backend. The included local setup can run on SQLite; switch the backend `.env` to MySQL for production hosting.
 
 ```bash
 cd backend
 composer install
 copy .env.example .env
 php artisan key:generate
+type nul > database\database.sqlite
 php artisan migrate --seed
 php artisan serve --host=127.0.0.1 --port=8000
 ```
@@ -36,7 +37,7 @@ php artisan serve --host=127.0.0.1 --port=8000
 Point the frontend at the API:
 
 ```bash
-copy .env.example .env
+copy .env.example .env.local
 npm.cmd run dev
 ```
 
@@ -66,6 +67,7 @@ Demo accounts all use the password `password`:
 
 - `POST /login`
 - `POST /register`
+- `GET /bootstrap`
 - `GET /services`
 - `POST /bookings`
 - `GET /bookings`

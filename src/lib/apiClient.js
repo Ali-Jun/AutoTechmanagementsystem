@@ -22,6 +22,7 @@ export function setApiToken(token) {
 export const apiClient = {
   login: (payload) => api.post("/login", payload),
   register: (payload) => api.post("/register", payload),
+  bootstrap: () => api.get("/bootstrap"),
   me: () => api.get("/me"),
   logout: () => api.post("/logout"),
   services: () => api.get("/services"),

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BookingController;
+use App\Http\Controllers\Api\BootstrapController;
 use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\MechanicController;
@@ -15,6 +16,7 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::get('/services', [ServiceController::class, 'index']);
 
 Route::middleware('auth:sanctum')->group(function (): void {
+    Route::get('/bootstrap', [BootstrapController::class, 'show']);
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);
 
